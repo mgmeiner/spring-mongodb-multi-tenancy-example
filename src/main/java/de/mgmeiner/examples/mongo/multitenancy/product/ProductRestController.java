@@ -15,7 +15,7 @@ public class ProductRestController {
 
     @GetMapping("/products")
     public Flux<Product> products() {
-        return productRepository.findAll();
+        return productRepository.findAll().map(it -> it);
     }
 
     @PutMapping("/products")

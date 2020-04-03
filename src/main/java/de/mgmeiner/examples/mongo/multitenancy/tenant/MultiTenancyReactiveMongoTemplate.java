@@ -2,23 +2,21 @@ package de.mgmeiner.examples.mongo.multitenancy.tenant;
 
 import com.mongodb.ClientSessionOptions;
 import com.mongodb.ReadPreference;
-import com.mongodb.WriteConcern;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.reactivestreams.client.ClientSession;
 import com.mongodb.reactivestreams.client.MongoCollection;
-import com.mongodb.reactivestreams.client.MongoDatabase;
 import org.bson.Document;
 import org.reactivestreams.Publisher;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.data.geo.GeoResult;
-import org.springframework.data.mapping.callback.ReactiveEntityCallbacks;
-import org.springframework.data.mongodb.SessionSynchronization;
 import org.springframework.data.mongodb.core.*;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.TypedAggregation;
 import org.springframework.data.mongodb.core.convert.MongoConverter;
+import org.springframework.data.mongodb.core.index.ReactiveIndexOperations;
 import org.springframework.data.mongodb.core.mapreduce.MapReduceOptions;
 import org.springframework.data.mongodb.core.query.NearQuery;
 import org.springframework.data.mongodb.core.query.Query;
@@ -32,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
+final class MultiTenancyReactiveMongoTemplate implements ReactiveMongoOperations, ApplicationContextAware {
 
     private Map<String, ReactiveMongoTemplate> delegates = new HashMap<>();
 
@@ -40,8 +38,6 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
             List<MultiTenancyReactiveMongoDatabaseFactory> multiTenancyReactiveMongoDatabaseFactories,
             MongoConverter mongoConverter
     ) {
-        super(multiTenancyReactiveMongoDatabaseFactories.get(0), mongoConverter);
-
         for (var multiTenancyReactiveMongoDatabaseFactory : multiTenancyReactiveMongoDatabaseFactories) {
             var reactiveMongoTemplate = new ReactiveMongoTemplate(
                     multiTenancyReactiveMongoDatabaseFactory,
@@ -52,28 +48,18 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
     }
 
     @Override
-    public void setWriteConcern(WriteConcern writeConcern) {
-        eachDelegate(rmt -> rmt.setWriteConcern(writeConcern));
-    }
-
-    @Override
-    public void setWriteConcernResolver(WriteConcernResolver writeConcernResolver) {
-        eachDelegate(rmt -> rmt.setWriteConcernResolver(writeConcernResolver));
-    }
-
-    @Override
-    public void setReadPreference(ReadPreference readPreference) {
-        eachDelegate(rmt -> rmt.setReadPreference(readPreference));
-    }
-
-    @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         eachDelegate(rmt -> rmt.setApplicationContext(applicationContext));
     }
 
     @Override
-    public void setEntityCallbacks(ReactiveEntityCallbacks entityCallbacks) {
-        eachDelegate(rmt -> rmt.setEntityCallbacks(entityCallbacks));
+    public ReactiveIndexOperations indexOps(String collectionName) {
+        throw new UnsupportedOperationException("currently not supported");
+    }
+
+    @Override
+    public ReactiveIndexOperations indexOps(Class<?> entityClass) {
+        throw new UnsupportedOperationException("currently not supported");
     }
 
     @Override
@@ -107,11 +93,6 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
     }
 
     @Override
-    public void setSessionSynchronization(SessionSynchronization sessionSynchronization) {
-        eachDelegate(rmt -> rmt.setSessionSynchronization(sessionSynchronization));
-    }
-
-    @Override
     public ReactiveSessionScoped inTransaction() {
         throw new UnsupportedOperationException("not working");
     }
@@ -132,23 +113,8 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
     }
 
     @Override
-    public <T> Flux<T> createFlux(ReactiveDatabaseCallback<T> callback) {
-        return getDelegate().flatMapMany(it -> it.createFlux(callback));
-    }
-
-    @Override
-    public <T> Mono<T> createMono(ReactiveDatabaseCallback<T> callback) {
-        return getDelegate().flatMap(it -> it.createMono(callback));
-    }
-
-    @Override
-    public <T> Flux<T> createFlux(String collectionName, ReactiveCollectionCallback<T> callback) {
-        return getDelegate().flatMapMany(it -> it.createFlux(collectionName, callback));
-    }
-
-    @Override
-    public <T> Mono<T> createMono(String collectionName, ReactiveCollectionCallback<T> callback) {
-        return getDelegate().flatMap(it -> it.createMono(collectionName, callback));
+    public ReactiveSessionScoped withSession(Publisher<ClientSession> sessionProvider) {
+        return null;
     }
 
     @Override
@@ -199,11 +165,6 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
     @Override
     public Flux<String> getCollectionNames() {
         return getDelegate().flatMapMany(ReactiveMongoTemplate::getCollectionNames);
-    }
-
-    @Override
-    public MongoDatabase getMongoDatabase() {
-        throw new UnsupportedOperationException("not working");
     }
 
     @Override
@@ -528,6 +489,18 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
     }
 
     @Override
+    public MongoConverter getConverter() {
+        // just return from the first delegate as this should be equal for all delegates.
+        return getDefaultDelegate().getConverter();
+    }
+
+    @Override
+    public String getCollectionName(Class<?> entityClass) {
+        // just return from the first delegate as this should be equal for all delegates.
+        return getDefaultDelegate().getCollectionName(entityClass);
+    }
+
+    @Override
     public <T> ReactiveFind<T> query(Class<T> domainType) {
         throw new UnsupportedOperationException("not working");
     }
@@ -579,7 +552,11 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
     private Mono<ReactiveMongoTemplate> getDelegate() {
         return Mono.subscriberContext().map(ctx -> {
             var tenant = ctx.getOrEmpty("tenant").orElseThrow(() -> new IllegalStateException("tenant must not be null"));
-            return delegates.getOrDefault(tenant, this);
+            return delegates.get(tenant);
         });
+    }
+
+    private ReactiveMongoTemplate getDefaultDelegate() {
+        return delegates.values().stream().findFirst().get();
     }
 }
