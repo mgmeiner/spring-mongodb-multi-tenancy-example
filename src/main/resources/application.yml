@@ -1,0 +1,21 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration
+
+multi-tenancy:
+  tenants:
+    - id: customer-1
+      mongo:
+        authentication-database: admin
+        database: customer1data
+        username: root
+        password: example
+    - id: customer-2
+      mongo:
+        authentication-database: admin
+        database: customer2data
+        username: root
+        password: example
+
