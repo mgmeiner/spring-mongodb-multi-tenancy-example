@@ -30,10 +30,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
 
-    private Map<String, ReactiveMongoTemplate> reactiveMongoTemplates = new HashMap<>();
+    private Map<String, ReactiveMongoTemplate> delegates = new HashMap<>();
 
     public MultiTenancyReactiveMongoTemplate(
             List<MultiTenancyReactiveMongoDatabaseFactory> multiTenancyReactiveMongoDatabaseFactories,
@@ -46,35 +47,34 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
                     multiTenancyReactiveMongoDatabaseFactory,
                     mongoConverter);
 
-            reactiveMongoTemplates.put(multiTenancyReactiveMongoDatabaseFactory.getTenantId(), reactiveMongoTemplate);
+            delegates.put(multiTenancyReactiveMongoDatabaseFactory.getTenantId(), reactiveMongoTemplate);
         }
     }
 
     @Override
     public void setWriteConcern(WriteConcern writeConcern) {
-        reactiveMongoTemplates.values().forEach(rmt -> rmt.setWriteConcern(writeConcern));
+        eachDelegate(rmt -> rmt.setWriteConcern(writeConcern));
     }
 
     @Override
     public void setWriteConcernResolver(WriteConcernResolver writeConcernResolver) {
-        reactiveMongoTemplates.values().forEach(rmt -> rmt.setWriteConcernResolver(writeConcernResolver));
+        eachDelegate(rmt -> rmt.setWriteConcernResolver(writeConcernResolver));
     }
 
     @Override
     public void setReadPreference(ReadPreference readPreference) {
-        reactiveMongoTemplates.values().forEach(rmt -> rmt.setReadPreference(readPreference));
+        eachDelegate(rmt -> rmt.setReadPreference(readPreference));
     }
 
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-        reactiveMongoTemplates.values().forEach(rmt -> rmt.setApplicationContext(applicationContext));
+        eachDelegate(rmt -> rmt.setApplicationContext(applicationContext));
     }
 
     @Override
     public void setEntityCallbacks(ReactiveEntityCallbacks entityCallbacks) {
-        reactiveMongoTemplates.values().forEach(rmt -> rmt.setEntityCallbacks(entityCallbacks));
+        eachDelegate(rmt -> rmt.setEntityCallbacks(entityCallbacks));
     }
-
 
     @Override
     public Mono<Document> executeCommand(String jsonCommand) {
@@ -108,7 +108,7 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
 
     @Override
     public void setSessionSynchronization(SessionSynchronization sessionSynchronization) {
-        reactiveMongoTemplates.values().forEach(rmt -> rmt.setSessionSynchronization(sessionSynchronization));
+        eachDelegate(rmt -> rmt.setSessionSynchronization(sessionSynchronization));
     }
 
     @Override
@@ -382,7 +382,6 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
         return getDelegate().flatMapMany(it -> it.insertAll(objectsToSave));
     }
 
-
     @Override
     public <T> Mono<T> save(Mono<? extends T> objectToSave) {
         return getDelegate().flatMap(it -> it.save(objectToSave));
@@ -573,10 +572,14 @@ final class MultiTenancyReactiveMongoTemplate extends ReactiveMongoTemplate {
         return getDelegate().flatMap(it -> it.updateFirst(query, update, collectionName));
     }
 
-    public Mono<ReactiveMongoTemplate> getDelegate() {
+    private void eachDelegate(Consumer<ReactiveMongoTemplate> action) {
+        delegates.values().forEach(action);
+    }
+
+    private Mono<ReactiveMongoTemplate> getDelegate() {
         return Mono.subscriberContext().map(ctx -> {
             var tenant = ctx.getOrEmpty("tenant").orElseThrow(() -> new IllegalStateException("tenant must not be null"));
-            return reactiveMongoTemplates.getOrDefault(tenant, this);
+            return delegates.getOrDefault(tenant, this);
         });
     }
 }
