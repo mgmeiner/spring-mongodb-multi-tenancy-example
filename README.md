@@ -44,4 +44,9 @@ A few operations as
  do not work with this implementation as they would need new delegating implementations or are currently simply not possible as 
  they return scalar values and so there is no possibility to access the _subscriberContext_.
 
+## Run Demo
 
+- clone repo
+- run `docker-compose up -d` to spin up a local mongodb instance for simple testing
+- run `mvnw spring-boot:run` to start the app
+- use the 'insomnia_workspace.json' and import the workspace into [Insomnia](https://insomnia.rest/)
